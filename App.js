@@ -6,9 +6,12 @@ import {
   TouchableOpacity,
   Keyboard,
   ScrollView,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
 } from "react-native";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const HISTORY_STORAGE_KEY = "@bmi_history_list";
 
 const getBMICategory = (bmi) => {
   const bmiValue = parseFloat(bmi);
@@ -27,19 +30,19 @@ const getBMIColor = (bmi) => {
 };
 
 const getHealthTip = (bmi) => {
-    const category = getBMICategory(bmi);
-    switch (category) {
-        case "Underweight":
-            return "Consider consulting a nutritionist to ensure you are meeting your dietary needs and promoting healthy weight gain.";
-        case "Normal Weight":
-            return "Keep up the good work! Maintain a balanced diet and consistent exercise routine for optimal health.";
-        case "Overweight":
-            return "Focus on small, sustainable changes in diet and increase daily physical activity. Consistency is key.";
-        case "Obese":
-            return "It's important to consult a healthcare professional. Developing a structured diet and exercise plan can greatly improve your health.";
-        default:
-            return "Maintain a healthy lifestyle.";
-    }
+  const category = getBMICategory(bmi);
+  switch (category) {
+    case "Underweight":
+      return "Consider consulting a nutritionist to ensure you are meeting your dietary needs and promoting healthy weight gain.";
+    case "Normal Weight":
+      return "Keep up the good work! Maintain a balanced diet and consistent exercise routine for optimal health.";
+    case "Overweight":
+      return "Focus on small, sustainable changes in diet and increase daily physical activity. Consistency is key.";
+    case "Obese":
+      return "It's important to consult a healthcare professional. Developing a structured diet and exercise plan can greatly improve your health.";
+    default:
+      return "Maintain a healthy lifestyle.";
+  }
 };
 
 export default function App() {
@@ -52,10 +55,41 @@ export default function App() {
 
   const [bmi, setBmi] = useState("");
   const [isCalculated, setIsCalculated] = useState(false);
-  
-  const [unitSystem, setUnitSystem] = useState("Metric"); 
-  
+
+  const [unitSystem, setUnitSystem] = useState("Metric");
+
   const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const jsonValue = await AsyncStorage.getItem(HISTORY_STORAGE_KEY);
+        // If data exists, parse it, otherwise default to empty array
+        const loadedHistory = jsonValue != null ? JSON.parse(jsonValue) : [];
+        setHistory(loadedHistory);
+      } catch (e) {
+        console.error("Failed to load BMI history from storage", e);
+      }
+    };
+
+    loadHistory();
+  }, []); // Runs once on mount
+
+  useEffect(() => {
+    const saveHistory = async () => {
+      try {
+        const jsonValue = JSON.stringify(history);
+        await AsyncStorage.setItem(HISTORY_STORAGE_KEY, jsonValue);
+      } catch (e) {
+        console.error("Failed to save BMI history to storage", e);
+      }
+    };
+
+    // Only save if history has been initialized
+    if (history.length >= 0) {
+      saveHistory();
+    }
+  }, [history]); // Re-run effect whenever the 'history' state changes
 
   const toggleUnitSystem = (newSystem) => {
     if (newSystem !== unitSystem) {
@@ -93,79 +127,95 @@ export default function App() {
     let currentPounds = 0;
 
     if (unitSystem === "Metric") {
-        const cleanHeight = height.replace(",", ".");
-        const cleanWeight = weight.replace(",", ".");
-        
-        currentHeightCm = parseFloat(cleanHeight);
-        currentWeightKg = parseFloat(cleanWeight);
+      const cleanHeight = height.replace(",", ".");
+      const cleanWeight = weight.replace(",", ".");
 
-        if (!cleanHeight || !cleanWeight) {
-            alert('Please enter both height (cm) and weight (kg).');
-            isValid = false;
-        } else if (isNaN(currentWeightKg) || isNaN(currentHeightCm) || currentHeightCm <= 0 || currentWeightKg <= 0) {
-            alert('Please enter valid positive numbers for metric units.');
-            isValid = false;
-        } else if (currentHeightCm < 5 || currentHeightCm > 300) {
-            alert('Height must be between 5 cm and 300 cm.');
-            isValid = false;
-        } else if (currentWeightKg < 0.2 || currentWeightKg > 600) {
-            alert('Weight must be between 0.2 kg and 600 kg.');
-            isValid = false;
-        }
+      currentHeightCm = parseFloat(cleanHeight);
+      currentWeightKg = parseFloat(cleanWeight);
 
-        if (isValid) {
-            heightInMeters = currentHeightCm / 100;
-            weightInKg = currentWeightKg;
-        }
+      if (!cleanHeight || !cleanWeight) {
+        alert("Please enter both height (cm) and weight (kg).");
+        isValid = false;
+      } else if (
+        isNaN(currentWeightKg) ||
+        isNaN(currentHeightCm) ||
+        currentHeightCm <= 0 ||
+        currentWeightKg <= 0
+      ) {
+        alert("Please enter valid positive numbers for metric units.");
+        isValid = false;
+      } else if (currentHeightCm < 5 || currentHeightCm > 300) {
+        alert("Height must be between 5 cm and 300 cm.");
+        isValid = false;
+      } else if (currentWeightKg < 0.2 || currentWeightKg > 600) {
+        alert("Weight must be between 0.2 kg and 600 kg.");
+        isValid = false;
+      }
 
-    } else { 
-        const cleanFeet = feet.replace(",", ".");
-        const cleanInches = inches.replace(",", ".");
-        const cleanPounds = pounds.replace(",", ".");
-        
-        currentFeet = parseFloat(cleanFeet);
-        currentInches = parseFloat(cleanInches || '0');
-        currentPounds = parseFloat(cleanPounds);
-        
-        const totalInches = currentFeet * 12 + currentInches;
+      if (isValid) {
+        heightInMeters = currentHeightCm / 100;
+        weightInKg = currentWeightKg;
+      }
+    } else {
+      const cleanFeet = feet.replace(",", ".");
+      const cleanInches = inches.replace(",", ".");
+      const cleanPounds = pounds.replace(",", ".");
 
-        if (!cleanFeet || !cleanPounds) {
-            alert('Please enter height (feet/inches) and weight (lbs).');
-            isValid = false;
-        } else if (isNaN(totalInches) || isNaN(currentPounds) || totalInches <= 0 || currentPounds <= 0) {
-            alert('Please enter valid positive numbers for imperial units.');
-            isValid = false;
-        } 
-        else if (totalInches < 40 || totalInches > 120 || currentPounds < 4 || currentPounds > 1350) {
-            alert('Please enter realistic imperial measurements (e.g., height between 3ft 4in and 10ft).');
-            isValid = false;
-        }
+      currentFeet = parseFloat(cleanFeet);
+      currentInches = parseFloat(cleanInches || "0");
+      currentPounds = parseFloat(cleanPounds);
 
-        if (isValid) {
-            weightInKg = currentPounds * 0.453592;
-            heightInMeters = totalInches * 0.0254;
-        }
+      const totalInches = currentFeet * 12 + currentInches;
+
+      if (!cleanFeet || !cleanPounds) {
+        alert("Please enter height (feet/inches) and weight (lbs).");
+        isValid = false;
+      } else if (
+        isNaN(totalInches) ||
+        isNaN(currentPounds) ||
+        totalInches <= 0 ||
+        currentPounds <= 0
+      ) {
+        alert("Please enter valid positive numbers for imperial units.");
+        isValid = false;
+      } else if (
+        totalInches < 40 ||
+        totalInches > 120 ||
+        currentPounds < 4 ||
+        currentPounds > 1350
+      ) {
+        alert(
+          "Please enter realistic imperial measurements (e.g., height between 3ft 4in and 10ft)."
+        );
+        isValid = false;
+      }
+
+      if (isValid) {
+        weightInKg = currentPounds * 0.453592;
+        heightInMeters = totalInches * 0.0254;
+      }
     }
 
     if (isValid) {
-        const bmiValue = weightInKg / (heightInMeters * heightInMeters);
-        const finalBmi = bmiValue.toFixed(1);
-        setBmi(finalBmi);
-        setIsCalculated(true); 
+      const bmiValue = weightInKg / (heightInMeters * heightInMeters);
+      const finalBmi = bmiValue.toFixed(1);
+      setBmi(finalBmi);
+      setIsCalculated(true);
 
-        const newEntry = {
-            id: Date.now(),
-            bmi: finalBmi,
-            category: getBMICategory(finalBmi),
-            date: new Date().toLocaleDateString(),
-            system: unitSystem,
-            source: unitSystem === 'Metric' 
-                ? `${currentHeightCm} cm / ${currentWeightKg} kg`
-                : `${currentFeet}'${currentInches}" / ${currentPounds} lbs`
-        };
-        setHistory(prevHistory => [newEntry, ...prevHistory].slice(0, 10)); 
+      const newEntry = {
+        id: Date.now(),
+        bmi: finalBmi,
+        category: getBMICategory(finalBmi),
+        date: new Date().toLocaleDateString(),
+        system: unitSystem,
+        source:
+          unitSystem === "Metric"
+            ? `${currentHeightCm} cm / ${currentWeightKg} kg`
+            : `${currentFeet}'${currentInches}" / ${currentPounds} lbs`,
+      };
+      setHistory((prevHistory) => [newEntry, ...prevHistory].slice(0, 10));
 
-        Keyboard.dismiss();
+      Keyboard.dismiss();
     }
   };
 
@@ -177,9 +227,9 @@ export default function App() {
           style={styles.input}
           value={height}
           onChangeText={setHeight}
-          placeholder="e.g. 175"
-          keyboardType="numeric"
-          returnKeyType="done"
+          placeholder='e.g. 175'
+          keyboardType='numeric'
+          returnKeyType='done'
           editable={!isCalculated}
         />
       </View>
@@ -190,9 +240,9 @@ export default function App() {
           style={styles.input}
           value={weight}
           onChangeText={setWeight}
-          placeholder="e.g. 70.5"
-          keyboardType="numeric"
-          returnKeyType="done"
+          placeholder='e.g. 70.5'
+          keyboardType='numeric'
+          returnKeyType='done'
           editable={!isCalculated}
         />
       </View>
@@ -205,21 +255,21 @@ export default function App() {
         <Text style={styles.label}>Height</Text>
         <View style={styles.row}>
           <TextInput
-            style={[styles.input, styles.halfInput, {marginRight: 10}]}
+            style={[styles.input, styles.halfInput, { marginRight: 10 }]}
             value={feet}
             onChangeText={setFeet}
-            placeholder="Feet (ft)"
-            keyboardType="numeric"
-            returnKeyType="done"
+            placeholder='Feet (ft)'
+            keyboardType='numeric'
+            returnKeyType='done'
             editable={!isCalculated}
           />
           <TextInput
             style={[styles.input, styles.halfInput]}
             value={inches}
             onChangeText={setInches}
-            placeholder="Inches (in)"
-            keyboardType="numeric"
-            returnKeyType="done"
+            placeholder='Inches (in)'
+            keyboardType='numeric'
+            returnKeyType='done'
             editable={!isCalculated}
           />
         </View>
@@ -231,23 +281,21 @@ export default function App() {
           style={styles.input}
           value={pounds}
           onChangeText={setPounds}
-          placeholder="e.g. 155"
-          keyboardType="numeric"
-          returnKeyType="done"
+          placeholder='e.g. 155'
+          keyboardType='numeric'
+          returnKeyType='done'
           editable={!isCalculated}
         />
       </View>
     </>
   );
 
-
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <ScrollView 
-        style={styles.scrollView} 
+      <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled" 
-      > 
+        keyboardShouldPersistTaps='handled'>
         <Text style={styles.title}>BMI Calculator</Text>
 
         <View style={styles.toggleContainer}>
@@ -257,12 +305,12 @@ export default function App() {
               unitSystem === "Metric" && styles.toggleButtonActive,
             ]}
             onPress={() => toggleUnitSystem("Metric")}
-            disabled={isCalculated}
-          >
-            <Text style={[
+            disabled={isCalculated}>
+            <Text
+              style={[
                 styles.toggleText,
                 unitSystem === "Metric" && styles.toggleTextActive,
-            ]}>
+              ]}>
               Metric (cm/kg)
             </Text>
           </TouchableOpacity>
@@ -272,40 +320,40 @@ export default function App() {
               unitSystem === "Imperial" && styles.toggleButtonActive,
             ]}
             onPress={() => toggleUnitSystem("Imperial")}
-            disabled={isCalculated}
-          >
-            <Text style={[
+            disabled={isCalculated}>
+            <Text
+              style={[
                 styles.toggleText,
                 unitSystem === "Imperial" && styles.toggleTextActive,
-            ]}>
+              ]}>
               Imperial (ft/lbs)
             </Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.referenceContainer}>
-            <Text style={styles.referenceTitle}>BMI Categories</Text>
-            <Text style={styles.referenceText}>• Below 18.5: Underweight</Text>
-            <Text style={styles.referenceText}>• 18.5 - 24.9: Normal Weight</Text>
-            <Text style={styles.referenceText}>• 25.0 - 29.9: Overweight</Text>
-            <Text style={styles.referenceText}>• 30.0+: Obese</Text>
+          <Text style={styles.referenceTitle}>BMI Categories</Text>
+          <Text style={styles.referenceText}>• Below 18.5: Underweight</Text>
+          <Text style={styles.referenceText}>• 18.5 - 24.9: Normal Weight</Text>
+          <Text style={styles.referenceText}>• 25.0 - 29.9: Overweight</Text>
+          <Text style={styles.referenceText}>• 30.0+: Obese</Text>
         </View>
 
-        {unitSystem === "Metric" ? renderMetricInputs() : renderImperialInputs()}
+        {unitSystem === "Metric"
+          ? renderMetricInputs()
+          : renderImperialInputs()}
 
         <TouchableOpacity
           style={[
             styles.button,
             isCalculated && NEW_CALCULATION_BUTTON_STYLES.button,
           ]}
-          onPress={handleButtonPress}
-        >
-          <Text 
+          onPress={handleButtonPress}>
+          <Text
             style={[
-                styles.buttonText,
-                isCalculated && NEW_CALCULATION_BUTTON_STYLES.buttonText
-            ]}
-          >
+              styles.buttonText,
+              isCalculated && NEW_CALCULATION_BUTTON_STYLES.buttonText,
+            ]}>
             {isCalculated ? "New Calculation" : "Calculate BMI"}
           </Text>
         </TouchableOpacity>
@@ -318,69 +366,71 @@ export default function App() {
               style={[
                 styles.categoryBadge,
                 { backgroundColor: getBMIColor(bmi) },
-              ]}
-            >
+              ]}>
               <Text style={styles.categoryText}>{getBMICategory(bmi)}</Text>
             </View>
-            
+
             <Text style={styles.tipTitle}>Health Tip:</Text>
             <Text style={styles.tipText}>{getHealthTip(bmi)}</Text>
-
           </View>
         ) : null}
-        
-        {history.length > 0 && (
-            <View style={styles.historyContainer}>
-                <Text style={styles.historyTitle}>Recent BMI History ({history.length} of 10)</Text>
-                {history.map((entry) => (
-                    <View key={entry.id} style={styles.historyEntry}>
-                        <View style={styles.historyLeft}>
-                            <Text style={styles.historyBMI}>
-                                {entry.bmi}
-                            </Text>
-                            <Text style={[styles.historyCategory, { color: getBMIColor(entry.bmi) }]}>
-                                {entry.category}
-                            </Text>
-                        </View>
-                        <View style={styles.historyDetails}>
-                            <Text style={styles.historyDate}>{entry.date} ({entry.system})</Text>
-                            <Text style={styles.historySource}>{entry.source}</Text>
-                        </View>
-                    </View>
-                ))}
-            </View>
-        )}
 
+        {history.length > 0 && (
+          <View style={styles.historyContainer}>
+            <Text style={styles.historyTitle}>
+              Recent BMI History ({history.length} of 10)
+            </Text>
+            {history.map((entry) => (
+              <View key={entry.id} style={styles.historyEntry}>
+                <View style={styles.historyLeft}>
+                  <Text style={styles.historyBMI}>{entry.bmi}</Text>
+                  <Text
+                    style={[
+                      styles.historyCategory,
+                      { color: getBMIColor(entry.bmi) },
+                    ]}>
+                    {entry.category}
+                  </Text>
+                </View>
+                <View style={styles.historyDetails}>
+                  <Text style={styles.historyDate}>
+                    {entry.date} ({entry.system})
+                  </Text>
+                  <Text style={styles.historySource}>{entry.source}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </TouchableWithoutFeedback>
   );
 }
 
 const NEW_CALCULATION_BUTTON_STYLES = StyleSheet.create({
-    button: {
-        backgroundColor: "#E1E8EE", 
-        borderColor: "#7F8C8D",
-        borderWidth: 2,
-        shadowColor: "transparent", 
-        padding: 20,
-        borderRadius: 15,
-        alignItems: "center",
-        marginTop: 20,
-        elevation: 0, 
-    },
-    buttonText: {
-        color: "#34495E",
-        fontSize: 20,
-        fontWeight: "bold",
-        letterSpacing: 0.5,
-    },
+  button: {
+    backgroundColor: "#E1E8EE",
+    borderColor: "#7F8C8D",
+    borderWidth: 2,
+    shadowColor: "transparent",
+    padding: 20,
+    borderRadius: 15,
+    alignItems: "center",
+    marginTop: 20,
+    elevation: 0,
+  },
+  buttonText: {
+    color: "#34495E",
+    fontSize: 20,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
+  },
 });
-
 
 const styles = StyleSheet.create({
   scrollView: {
-    flex: 1, 
-    backgroundColor: "#F0F4F8", 
+    flex: 1,
+    backgroundColor: "#F0F4F8",
   },
   container: {
     padding: 25,
@@ -389,8 +439,8 @@ const styles = StyleSheet.create({
     minHeight: 800,
   },
   row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   halfInput: {
     flex: 1,
@@ -427,13 +477,13 @@ const styles = StyleSheet.create({
     color: "#2C3E50",
   },
   toggleContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
     borderRadius: 15,
     marginBottom: 30,
     borderWidth: 1,
-    borderColor: '#E1E8EE',
-    overflow: 'hidden',
+    borderColor: "#E1E8EE",
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -443,20 +493,20 @@ const styles = StyleSheet.create({
   toggleButton: {
     flex: 1,
     paddingVertical: 15,
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
   },
   toggleButtonActive: {
-    backgroundColor: '#3498DB',
+    backgroundColor: "#3498DB",
   },
   toggleText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#7F8C8D',
+    fontWeight: "600",
+    color: "#7F8C8D",
   },
   toggleTextActive: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+    color: "#FFFFFF",
+    fontWeight: "bold",
   },
   button: {
     backgroundColor: "#3498DB",
@@ -520,15 +570,15 @@ const styles = StyleSheet.create({
   },
   tipTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#34495E',
+    fontWeight: "bold",
+    color: "#34495E",
     marginTop: 25,
     marginBottom: 5,
   },
   tipText: {
     fontSize: 16,
-    color: '#5D6D7E',
-    textAlign: 'center',
+    color: "#5D6D7E",
+    textAlign: "center",
     lineHeight: 22,
   },
   referenceContainer: {
@@ -559,7 +609,7 @@ const styles = StyleSheet.create({
   historyContainer: {
     marginTop: 30,
     padding: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 15,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -569,44 +619,44 @@ const styles = StyleSheet.create({
   },
   historyTitle: {
     fontSize: 20,
-    fontWeight: '700',
-    color: '#2C3E50',
+    fontWeight: "700",
+    color: "#2C3E50",
     marginBottom: 15,
-    textAlign: 'center',
+    textAlign: "center",
   },
   historyEntry: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F4F8',
+    borderBottomColor: "#F0F4F8",
   },
   historyLeft: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    flexDirection: "row",
+    alignItems: "baseline",
   },
   historyBMI: {
     fontSize: 22,
-    fontWeight: 'bold',
-    color: '#34495E',
+    fontWeight: "bold",
+    color: "#34495E",
     marginRight: 8,
   },
   historyCategory: {
     fontSize: 14,
-    fontWeight: '600',
-    textTransform: 'uppercase',
+    fontWeight: "600",
+    textTransform: "uppercase",
   },
   historyDetails: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
   historyDate: {
     fontSize: 14,
-    color: '#7F8C8D',
-    fontWeight: '500',
+    color: "#7F8C8D",
+    fontWeight: "500",
   },
   historySource: {
     fontSize: 12,
-    color: '#AEB6BF',
-  }
+    color: "#AEB6BF",
+  },
 });
